@@ -667,7 +667,7 @@ public class UserdataService {
 						fileIds.remove(fileId);
 					}
 				}
-                LOG.info("Prepare file " + (System.currentTimeMillis() - time2) + ",type = " + sf.type + ",size = " + sf.zipSize);
+                LOG.info("Prepare file " + (System.currentTimeMillis() - time2) + ",type = " + sf.type + ",size = " + sf.zipSize + ",name = " + sf.name);
 			}
             long time3 = System.currentTimeMillis();
             JSONObject json = createItemsJson(itemsJson);
