@@ -613,7 +613,9 @@ public class UserdataService {
     
     public void getBackup(HttpServletResponse response, PremiumUserDevicesRepository.PremiumUserDevice dev,
 			Set<String> filterTypes, boolean includeDeleted, String format) throws IOException {
+        long time = System.currentTimeMillis();
 		List<UserFileNoData> files = filesRepository.listFilesByUserid(dev.userid, null, null);
+        LOG.info("Get listFilesByUserid" + (System.currentTimeMillis() - time));
 		Set<String> fileIds = new TreeSet<>();
 		SimpleDateFormat formatter = new SimpleDateFormat("dd-MM-yy");
 		String fileName = "Export_" + formatter.format(new Date());
@@ -625,6 +627,7 @@ public class UserdataService {
             JSONArray itemsJson = new JSONArray();
 			zs = new ZipOutputStream(new FileOutputStream(tmpFile));
 			for (PremiumUserFilesRepository.UserFileNoData sf : files) {
+                long time2 = System.currentTimeMillis();
 				String fileId = sf.type + "____" + sf.name;
 				if (filterTypes != null && !isSelectedType(filterTypes, sf)) {
 					continue;
@@ -664,7 +667,9 @@ public class UserdataService {
 						fileIds.remove(fileId);
 					}
 				}
+                LOG.info("Prepare file " + (System.currentTimeMillis() - time2) + ",type = " + sf.type);
 			}
+            long time3 = System.currentTimeMillis();
             JSONObject json = createItemsJson(itemsJson);
             ZipEntry zipEntry = new ZipEntry("items.json");
             zs.putNextEntry(zipEntry);
@@ -683,6 +688,7 @@ public class UserdataService {
 			} finally {
 				fis.close();
 			}
+            LOG.info("Prepare all backup " + (System.currentTimeMillis() - time3));
 		} finally {
 			if (zs != null) {
 				zs.close();
