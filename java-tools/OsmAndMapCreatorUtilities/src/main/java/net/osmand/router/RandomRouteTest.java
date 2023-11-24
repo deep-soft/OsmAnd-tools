@@ -2,6 +2,8 @@ package net.osmand.router;
 
 import java.io.File;
 import java.sql.Connection;
+import java.util.List;
+
 import org.apache.commons.logging.Log;
 
 import net.osmand.PlatformUtil;
@@ -18,6 +20,7 @@ public class RandomRouteTest {
 
 	private static RoutingContext hhContext;
 	private static HHRoutePlanner hhPlanner;
+	private static BinaryRoutePlanner brPlanner;
 
 	public static void main(String[] args) throws Exception {
 		// directory with *.obf and Maps_PROFILE.hhdb (symlink)
@@ -36,9 +39,15 @@ public class RandomRouteTest {
 
 		// ready to use HHRoutePlanner class
 		hhPlanner = HHRoutePlanner.create(hhContext, new HHRoutingDB(conn));
-
 		// run test HH-routing
-		HHRouteDataStructure.HHNetworkRouteRes route = hhPlanner.runRouting(START, FINISH, null);
+		HHRouteDataStructure.HHNetworkRouteRes hh = hhPlanner.runRouting(START, FINISH, null);
+
+		////////////// TODO need fresh RoutingContext for next use! How to reset it??? //////////////////
+
+//		// use BinaryRoutePlanner as default route frontend
+//		RoutePlannerFrontEnd router = new RoutePlannerFrontEnd();
+//		// run test BinaryRoutePlanner TODO is it correct to use hhContext here?
+//		List<RouteSegmentResult> routeSegments = router.searchRoute(hhContext, START, FINISH, null);
 	}
 }
 
@@ -60,6 +69,7 @@ RandomRoutePoints
 
 PseudoRandom: seed = (week_number + action_id + iteration)
 
+Vik notes:
 
 SimpleDateFormat sdf = new SimpleDateFormat("YYYY-MM-ww");
   Date roundToWeek = sdf.parse(sdf.format(new Date()));
