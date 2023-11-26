@@ -1,7 +1,6 @@
 package net.osmand.router;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.sql.Connection;
@@ -14,51 +13,83 @@ import org.apache.commons.logging.Log;
 import net.osmand.PlatformUtil;
 import net.osmand.data.LatLon;
 import net.osmand.obf.preparation.DBDialect;
-import org.bouncycastle.util.test.Test;
 
 public class RandomRouteTest {
 	private class TestConfig {
-		private int ITERATIONS = 10; // number of random routes
-		private int MAX_INTER_POINTS = 2; // 0-2 intermediate points
-		private int MAX_DISTANCE_KM = 50; // 0-50 km distance between start and finish
-		private int MAX_DEVIATE_START_FINISH_M = 100; // 0-100 meters start/finish deviation from way-nodes
-		private Map<String, String[]> profiles = new HashMap<>() {{ // profiles: {"profile:tag"} = [options]
+		private final String[] PREDEFINED_TESTS = { // optional predefined routes, each in the url-format (implies ITERATIONS=0)
+				"https://test.osmand.net/map/?start=48.211348,24.478998&finish=48.172382,24.421492&type=osmand&profile=bicycle&params=bicycle,height_obstacles#14/48.1852/24.4208",
+				"https://osmand.net/map/?start=50.450128,30.535611&finish=50.460479,30.589365&via=50.452647,30.588330&type=osmand&profile=car#14/50.4505/30.5511",
+				"start=48.211348,24.478998&finish=48.172382,24.421492&type=osmand&profile=bicycle&params=bicycle,height_obstacles",
+				"start=50.450128,30.535611&finish=50.460479,30.589365&via=50.452647,30.588330&profile=car",
+				"start=50.450128,30.535611&finish=50.460479,30.589365&via=1,2;3,4;5,6&profile=car",
+//				"start=L,L&finish=L,L&via=L,L;L,L&profile=pedestrian&params=height_obstacles" // example
+		};
+
+		// random tests settings
+		private final int ITERATIONS = 10; // number of random routes
+		private final int MAX_INTER_POINTS = 2; // 0-2 intermediate points
+		private final int MAX_DISTANCE_KM = 50; // 0-50 km distance between start and finish
+		private final int MAX_DEVIATE_START_FINISH_M = 100; // 0-100 meters start/finish deviation from way-nodes
+		private final Map<String, String[]> RANDOM_PROFILES = new HashMap<>() {{ // profiles: {"profile:tag"} = [options]
 			put("car", new String[0]);
 			put("bicycle", new String[0]);
 			put("bicycle:elevation", new String[]{"height_obstacles"});
 		}};
 	}
 
+	private class TestEntry {
+		private String type;
+		private LatLon start;
+		private LatLon finish;
+		private String profile = "car";
+		private List<String> params = new ArrayList<>();
+		private List<LatLon> via = new ArrayList<>(); // interpoints
+
+		public String toString() {
+			String START = String.format("%f,%f", start.getLatitude(), start.getLongitude());
+			String FINISH = String.format("%f,%f", finish.getLatitude(), finish.getLongitude());
+			String TYPE = type == null ? "osmand" : type;
+			String PROFILE = profile;
+			String GO = String.format("14/%f/%f",
+					(start.getLatitude() + finish.getLatitude()) / 2,
+					(start.getLongitude() + finish.getLongitude()) / 2);
+
+			String hasVia = via.size() > 0 ? "&via=" : "";
+
+			List<String> viaList = new ArrayList<>();
+			via.forEach(ll -> viaList.add(String.format("%f,%f", ll.getLatitude(), ll.getLongitude())));
+			String VIA = String.join(";", viaList);
+
+			String hasParams = params.size() > 0 ? "&params=" : "";
+			String PARAMS = String.join(",", params); // site will fix it to "profile,params"
+
+			return String.format(
+					"https://test.osmand.net/map/?start=%s&finish=%s%s%s&type=%s&profile=%s%s%s#%s",
+					START, FINISH, hasVia, VIA, TYPE, PROFILE, hasParams, PARAMS, GO);
+		}
+	}
+
 	private TestConfig config;
-	private final Log LOG = PlatformUtil.getLog(RandomRouteTest.class);
+	private List<TestEntry> testList = new ArrayList<>();
 	private List<BinaryMapIndexReader> obfReaders = new ArrayList<>();
 	private HashMap<String, Connection> hhConnections = new HashMap<>(); // [Profile]
+	private final Log LOG = PlatformUtil.getLog(RandomRouteTest.class);
 
-	RandomRouteTest() {
-		this.config = new TestConfig();
+	private void generateRandomTests() {
 	}
-
-	private List<BinaryMapIndexReader> getObfReaders() {
-		return obfReaders;
-	}
-
-	private Connection getHHconnection(String profile) {
-		return hhConnections.get(profile);
-	}
-
-//	private static LatLon START = new LatLon(48.002242, 11.379100);
-//	private static LatLon FINISH = new LatLon(48.201151, 11.771207);
-
-//	private static RoutingContext hhContext;
-//	private static HHRoutePlanner hhPlanner;
-//	private static BinaryRoutePlanner brPlanner;
 
 	public static void main(String[] args) throws Exception {
 		RandomRouteTest test = new RandomRouteTest();
 
-		File obfDirectory = new File(args.length == 0 ? "." : args[0]);
+		File obfDirectory = new File(args.length == 0 ? "." : args[0]); // args[0] is a path to *.obf and hh-files
 		test.initHHsqliteConnections(obfDirectory, HHRoutingDB.EXT);
 		test.initObfReaders(obfDirectory);
+		test.generateTestList();
+	}
+
+//	private static RoutingContext hhContext;
+//	private static HHRoutePlanner hhPlanner;
+//	private static BinaryRoutePlanner brPlanner;
 
 //		// use HHRoutingPrepareContext to list *.obf and parse profile/params
 //		TestPrepareContext prepareContext = new TestPrepareContext(obfDirectory, ROUTING_PROFILE, ROUTING_PARAMS[0].split(","));
@@ -76,7 +107,7 @@ public class RandomRouteTest {
 //		// run test HH-routing
 //		HHRouteDataStructure.HHNetworkRouteRes hh = hhPlanner.runRouting(START, FINISH, hhConfig);
 
-		////////////// TODO need fresh RoutingContext for next use! How to reset it??? //////////////////
+	////////////// TODO need fresh RoutingContext for next use! How to reset it??? //////////////////
 //		hhContext = hhPrepareContext.gcMemoryLimitToUnloadAll(hhContext, null, true);
 //		hhContext.routingTime = 0;
 //
@@ -84,7 +115,6 @@ public class RandomRouteTest {
 //		RoutePlannerFrontEnd router = new RoutePlannerFrontEnd();
 //		// run test BinaryRoutePlanner TODO is it correct to use hhContext here?
 //		List<RouteSegmentResult> routeSegments = router.searchRoute(hhContext, START, FINISH, null);
-	}
 
 //	private static class TestPrepareContext extends HHRoutingPrepareContext {
 //		public TestPrepareContext(File obfFile, String routingProfile, String... profileSettings) {
@@ -114,7 +144,7 @@ public class RandomRouteTest {
 		}
 
 		// sort files by name to improve pseudo-random reproducibility
-		Collections.sort(obfFiles, (f1, f2) -> f1.getName().compareTo(f2.getName()));
+		obfFiles.sort((f1, f2) -> f1.getName().compareTo(f2.getName()));
 
 		for (File source : obfFiles) {
 			System.out.printf("Use OBF %s...\n", source.getName());
@@ -134,7 +164,7 @@ public class RandomRouteTest {
 		}
 
 		// sort files by name to improve pseudo-random reproducibility
-		Collections.sort(sqliteFiles, (f1, f2) -> f1.getName().compareTo(f2.getName()));
+		sqliteFiles.sort((f1, f2) -> f1.getName().compareTo(f2.getName()));
 
 		for (File source : sqliteFiles) {
 			String[] parts = source.getName().split("[_.]"); // Maps_PROFILE.hhdb
@@ -146,9 +176,56 @@ public class RandomRouteTest {
 		}
 	}
 
+	private void generateTestList() {
+		if (config.PREDEFINED_TESTS.length > 0) {
+			parsePredefinedTests();
+		} else {
+			generateRandomTests();
+		}
+	}
+
+	private void parsePredefinedTests() {
+		for (String url : config.PREDEFINED_TESTS) {
+			TestEntry entry = new TestEntry();
+			String opts = url.replaceAll(".*\\?", "").replaceAll("#.*", "");
+			for (String keyval : opts.split("&")) {
+				String k = keyval.split("=")[0];
+				String v = keyval.split("=")[1];
+				if ("profile".equals(k)) { // string
+					entry.profile = v;
+				} else if ("start".equals(k)) { // L,L
+					double lat = Double.parseDouble(v.split(",")[0]);
+					double lon = Double.parseDouble(v.split(",")[1]);
+					entry.start = new LatLon(lat, lon);
+				} else if ("finish".equals(k)) { // L,L
+					double lat = Double.parseDouble(v.split(",")[0]);
+					double lon = Double.parseDouble(v.split(",")[1]);
+					entry.finish = new LatLon(lat, lon);
+				} else if ("via".equals(k)) { // L,L;L,L...
+					for (String ll : v.split(";")) {
+						double lat = Double.parseDouble(ll.split(",")[0]);
+						double lon = Double.parseDouble(ll.split(",")[1]);
+						entry.via.add(new LatLon(lat, lon));
+					}
+				} else if ("params".equals(k)) { // string,string...
+					for (String param : v.split(",")) {
+						if (entry.profile.equals(param)) { // /profile/,param1,param2 -> param1,param2
+							continue;
+						}
+						entry.params.add(param);
+					}
+				}
+			}
+			if (entry.start != null && entry.finish != null) {
+				System.err.printf("+ %s\n", entry);
+				testList.add(entry);
+			}
+		}
+	}
+
 	// return fixed (pseudo) random int >=0 and < bound
 	// use current week number + action (enum) + i + j as the random seed
-	private static int fixedRandom(int bound, randomActions action, int i, int j) {
+	private int fixedRandom(int bound, randomActions action, int i, int j) {
 		final int week = Calendar.getInstance().get(Calendar.WEEK_OF_YEAR); // 01-52
 		final int seed = (week << 24) + (action.ordinal() << 16) + (i << 1) + j;
 		return bound > 0 ? new Random(seed).nextInt(bound) : 0;
@@ -159,18 +236,13 @@ public class RandomRouteTest {
 		GET_FINISH,
 		GET_PROFILE
 	}
+
+	RandomRouteTest() {
+		this.config = new TestConfig();
+	}
 }
 
 /*
-
-http://localhost:3000/map/?start=48.002242,11.379100&finish=48.201151,11.771207&type=osmand&profile=car#11/48.1567/11.5315
-
-RandomRouteTest - главный класс (инициализация obf, главный цикл: выбор точек, запуск ротуров, сравнение)
-
-Приватные классы:
-
-RandomRoutePoints
-
 Vik notes:
 
 BinaryInspector.printRouteDetailInfo - считаете все точки в дорогах и можно хоть в память прочитать, хотя каждый раз читать
@@ -179,11 +251,11 @@ random.nextInt() - на номер файла
 random.nextInt() - на номер дороги в файле
 random.nextInt() - на номер отрезка в дороге
 
+See:
 OBF.proto
 utilities.sh
 MainUtilities.java
  */
-
 
 // TODO RR-1 Test height_obstacles uphill (Petros) for the up-vs-down bug
 // TODO RR-2 Equalise Binary Native lib call (interpoints==0 vs interpoints>0)
