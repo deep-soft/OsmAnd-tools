@@ -37,15 +37,34 @@ public class RandomRouteTest {
 		}};
 	}
 
-	private class TestEntry {
+	private class TestResult {
 		private String type;
-		private LatLon start;
-		private LatLon finish;
-		private String profile = "car";
-		private List<String> params = new ArrayList<>();
-		private List<LatLon> via = new ArrayList<>(); // interpoints
+		private double cost;
+		private int runTime; // ms
+		private int visitedSegments;
+		// TODO distance, geometry, etc
+		private TestEntry parent; // ref to start, finish, etc
 
 		public String toString() {
+			return parent.toURL(type);
+		}
+	}
+
+	private class TestEntry {
+		private LatLon start;
+		private LatLon finish;
+		private List<LatLon> via = new ArrayList<>(); // interpoints
+
+		private String profile = "car";
+		private List<String> params = new ArrayList<>();
+
+		private List<TestResult> results = new ArrayList<>();
+
+		public String toString() {
+			return toURL("osmand");
+		}
+
+		private String toURL(String type) {
 			String START = String.format("%f,%f", start.getLatitude(), start.getLongitude());
 			String FINISH = String.format("%f,%f", finish.getLatitude(), finish.getLongitude());
 			String TYPE = type == null ? "osmand" : type;
@@ -82,6 +101,7 @@ public class RandomRouteTest {
 		RandomRouteTest test = new RandomRouteTest();
 
 		File obfDirectory = new File(args.length == 0 ? "." : args[0]); // args[0] is a path to *.obf and hh-files
+
 		test.initHHsqliteConnections(obfDirectory, HHRoutingDB.EXT);
 		test.initObfReaders(obfDirectory);
 		test.generateTestList();
@@ -188,31 +208,37 @@ public class RandomRouteTest {
 		for (String url : config.PREDEFINED_TESTS) {
 			TestEntry entry = new TestEntry();
 			String opts = url.replaceAll(".*\\?", "").replaceAll("#.*", "");
-			for (String keyval : opts.split("&")) {
-				String k = keyval.split("=")[0];
-				String v = keyval.split("=")[1];
-				if ("profile".equals(k)) { // string
-					entry.profile = v;
-				} else if ("start".equals(k)) { // L,L
-					double lat = Double.parseDouble(v.split(",")[0]);
-					double lon = Double.parseDouble(v.split(",")[1]);
-					entry.start = new LatLon(lat, lon);
-				} else if ("finish".equals(k)) { // L,L
-					double lat = Double.parseDouble(v.split(",")[0]);
-					double lon = Double.parseDouble(v.split(",")[1]);
-					entry.finish = new LatLon(lat, lon);
-				} else if ("via".equals(k)) { // L,L;L,L...
-					for (String ll : v.split(";")) {
-						double lat = Double.parseDouble(ll.split(",")[0]);
-						double lon = Double.parseDouble(ll.split(",")[1]);
-						entry.via.add(new LatLon(lat, lon));
-					}
-				} else if ("params".equals(k)) { // string,string...
-					for (String param : v.split(",")) {
-						if (entry.profile.equals(param)) { // /profile/,param1,param2 -> param1,param2
-							continue;
+			if (opts.contains("&")) {
+				for (String keyval : opts.split("&")) {
+					if (keyval.contains("=")) {
+						String k = keyval.split("=")[0];
+						String v = keyval.split("=")[1];
+						if ("profile".equals(k)) { // profile=string
+							entry.profile = v;
+						} else if ("start".equals(k) && v.contains(",")) { // start=L,L
+							double lat = Double.parseDouble(v.split(",")[0]);
+							double lon = Double.parseDouble(v.split(",")[1]);
+							entry.start = new LatLon(lat, lon);
+						} else if ("finish".equals(k) && v.contains(",")) { // finish=L,L
+							double lat = Double.parseDouble(v.split(",")[0]);
+							double lon = Double.parseDouble(v.split(",")[1]);
+							entry.finish = new LatLon(lat, lon);
+						} else if ("via".equals(k)) { // via=L,L;L,L...
+							for (String ll : v.split(";")) {
+								if (ll.contains(",")) {
+									double lat = Double.parseDouble(ll.split(",")[0]);
+									double lon = Double.parseDouble(ll.split(",")[1]);
+									entry.via.add(new LatLon(lat, lon));
+								}
+							}
+						} else if ("params".equals(k)) { // params=string,string...
+							for (String param : v.split(",")) {
+								if (entry.profile.equals(param)) { // /profile/,param1,param2 -> param1,param2
+									continue;
+								}
+								entry.params.add(param);
+							}
 						}
-						entry.params.add(param);
 					}
 				}
 			}
