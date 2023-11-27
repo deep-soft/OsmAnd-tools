@@ -30,7 +30,9 @@ import gnu.trove.iterator.TLongIterator;
 import gnu.trove.list.array.TIntArrayList;
 import gnu.trove.list.array.TLongArrayList;
 import gnu.trove.map.hash.TIntObjectHashMap;
+import gnu.trove.map.hash.TLongObjectHashMap;
 import net.osmand.ResultMatcher;
+import net.osmand.binary.BinaryHHRouteReaderAdapter.HHRouteRegion;
 import net.osmand.binary.BinaryIndexPart;
 import net.osmand.binary.BinaryMapAddressReaderAdapter;
 import net.osmand.binary.BinaryMapAddressReaderAdapter.AddressRegion;
@@ -56,12 +58,14 @@ import net.osmand.data.Building;
 import net.osmand.data.City;
 import net.osmand.data.LatLon;
 import net.osmand.data.MapObject;
+import net.osmand.data.QuadRect;
 import net.osmand.data.Street;
 import net.osmand.data.TransportRoute;
 import net.osmand.data.TransportSchedule;
 import net.osmand.data.TransportStop;
 import net.osmand.osm.MapRenderingTypes;
 import net.osmand.router.TransportRoutePlanner;
+import net.osmand.router.HHRoutingDB.NetworkDBPoint;
 import net.osmand.util.MapUtils;
 
 public class BinaryInspector {
@@ -92,7 +96,7 @@ public class BinaryInspector {
 					"-latlon=42.7405,18.6357",
 					//"-xyz=12071,26142,16",
 //					"-osm="+System.getProperty("maps.dir")+"Routing_test.obf.osm",
-					System.getProperty("maps.dir") + "Netherlands_europe_car.obf"
+					System.getProperty("maps.dir") + "Germany_car.obf"
 //					System.getProperty("maps.dir")+"/../repos/resources/countries-info/regions.ocbf"
 			});
 		} else {
@@ -169,6 +173,10 @@ public class BinaryInspector {
 
 		public boolean isVpoi() {
 			return vpoi;
+		}
+		
+		public boolean isVHHrouting() {
+			return vhhrouting;
 		}
 
 		public boolean isVtransport() {
@@ -521,6 +529,19 @@ public class BinaryInspector {
 							ti.getTop() << sh, ti.getBottom() << sh));
 					if ((vInfo != null && vInfo.isVtransport())) {
 						printTransportDetailInfo(vInfo, index, (TransportIndex) p);
+					}
+				} else if (p instanceof HHRouteRegion) {
+					HHRouteRegion ri = ((HHRouteRegion) p);
+					QuadRect rt = ri.getLatLonBbox();
+					println(String.format("\tBounds %s profile '%s' %s edition = %s", formatLatBounds(rt.left, rt.right,
+							rt.top, rt.bottom), ri.profile, ri.profileParams, new Date(ri.edition)));
+					if ((vInfo != null && vInfo.isVHHrouting())) {
+						TLongObjectHashMap<NetworkDBPoint> pnts = index.initHHPoints(ri, NetworkDBPoint.class);
+						for (NetworkDBPoint pnt : pnts.valueCollection()) {
+							System.out.println(String.format("\t\t %s - cluster %d (duap point %d, %d) - %d,%d -> %d,%d", pnt,
+									pnt.clusterId, pnt.dualPoint == null ? 0 : pnt.dualPoint.index,
+									pnt.dualPoint == null ? 0 : pnt.dualPoint.clusterId, pnt.startX, pnt.startY, pnt.endX, pnt.endY));
+						}
 					}
 				} else if (p instanceof RouteRegion) {
 					RouteRegion ri = ((RouteRegion) p);

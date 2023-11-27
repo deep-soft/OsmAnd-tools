@@ -81,7 +81,7 @@ public class HHRoutingShortcutCreator {
 		nameFile += "Montenegro_europe_2.road.obf_car";
 		File source = new File(nameFile + HHRoutingDB.EXT);
 		File target = new File(nameFile + HHRoutingDB.CEXT);
-		compact(source, target);
+		HHRoutingPreparationDB.compact(source, target);
 	}
 	
 	public static void main(String[] args) throws Exception {
@@ -106,7 +106,7 @@ public class HHRoutingShortcutCreator {
 		String name = obfFile.getCanonicalFile().getName() + "_" + ROUTING_PROFILE;
 		File dbFile = new File(folder, name + HHRoutingDB.EXT);
 		if (onlyCompact) {
-			compact(dbFile, new File(folder, name + HHRoutingDB.CEXT));
+			HHRoutingPreparationDB.compact(dbFile, new File(folder, name + HHRoutingDB.CEXT));
 			return;
 		}
 		HHRoutingPreparationDB networkDB = new HHRoutingPreparationDB(dbFile);
@@ -119,18 +119,19 @@ public class HHRoutingShortcutCreator {
 		
 		for (String routingParam : ROUTING_PARAMS) {
 			prepareContext = new HHRoutingPrepareContext(obfFile, ROUTING_PROFILE, routingParam.split(","));
-			int routingProfile = networkDB.insertRoutingProfile(routingParam);
+			int routingProfile = networkDB.insertRoutingProfile(ROUTING_PROFILE, routingParam);
 			HHRoutingShortcutCreator proc = new HHRoutingShortcutCreator();
-			networkDB.selectRoutingProfile(routingProfile);
 			// reload points to avoid cache
 			TLongObjectHashMap<NetworkDBPoint> pnts = networkDB.loadNetworkPoints(NetworkDBPoint.class);
-			int segments = networkDB.loadNetworkSegments(pnts.valueCollection());
+			int segments = networkDB.loadNetworkSegments(pnts.valueCollection(), routingProfile);
 			System.out.printf("Calculating segments for routing (%s) - existing segments %,d \n", routingParam, segments);	
-			Collection<Entity> objects = proc.buildNetworkShortcuts(pnts, networkDB);
+			Collection<Entity> objects = proc.buildNetworkShortcuts(pnts, networkDB, routingProfile);
 			saveOsmFile(objects, new File(folder, name + "-hh.osm"));
 		}
 		networkDB.close();
-		compact(dbFile, new File(folder, name + HHRoutingDB.CEXT));
+		File compactFile = new File(folder, name + HHRoutingDB.CEXT);
+		HHRoutingPreparationDB.compact(dbFile, compactFile);
+		new HHRoutingOBFWriter().writeFile(compactFile);
 	}
 	
 	
@@ -140,12 +141,6 @@ public class HHRoutingShortcutCreator {
 			HHRoutingUtilities.addNode(osmObjects, p, null, "highway", "stop");
 		}
 		HHRoutingUtilities.saveOsmFile(osmObjects.valueCollection(), osm);
-	}
-	public static void compact(File source, File target) throws SQLException, IOException {
-		System.out.printf("Compacting %s -> %s...\n", source.getName(), target.getName());
-		target.delete();
-		HHRoutingPreparationDB.compact(DBDialect.SQLITE.getDatabaseConnection(source.getAbsolutePath(), LOG),
-				DBDialect.SQLITE.getDatabaseConnection(target.getAbsolutePath(), LOG));
 	}
 
 	
@@ -274,8 +269,7 @@ public class HHRoutingShortcutCreator {
 
 	}
 
-	private Collection<Entity> buildNetworkShortcuts(TLongObjectHashMap<NetworkDBPoint> pnts,
-			HHRoutingPreparationDB networkDB)
+	private Collection<Entity> buildNetworkShortcuts(TLongObjectHashMap<NetworkDBPoint> pnts,HHRoutingPreparationDB networkDB, int routingProfile)
 			throws InterruptedException, IOException, SQLException, ExecutionException {
 		TLongObjectHashMap<Entity> osmObjects = new TLongObjectHashMap<>();
 		double sz = pnts.size() / 100.0;
@@ -299,7 +293,7 @@ public class HHRoutingShortcutCreator {
 		
 		TLongObjectHashMap<NetworkDBPoint> networkPointsByGeoId = new TLongObjectHashMap<>();
 		for (NetworkDBPoint pnt : pnts.valueCollection()) {
-			networkPointsByGeoId.put(pnt.pntGeoId, pnt);
+			networkPointsByGeoId.put(pnt.getGeoPntId() , pnt);
 		}
 		for (NetworkDBPoint pnt : pnts.valueCollection()) {
 			ind++;
@@ -347,7 +341,7 @@ public class HHRoutingShortcutCreator {
 								logf("%.2f%% Process %d (%d shortcuts) - %.1f ms", ind / sz, rpnt.roadId / 64,
 										res.shortcuts.get(k), rpnt.rt(false).rtDistanceFromStart);
 							}
-							networkDB.insertSegments(rpnt.connected);
+							networkDB.insertSegments(rpnt.connected, routingProfile);
 							if (DEBUG_VERBOSE_LEVEL >= 2) {
 								System.out.println(calculationProgress.getInfo(null));
 							}
@@ -391,16 +385,15 @@ public class HHRoutingShortcutCreator {
 		TLongObjectHashMap<RouteSegment> resUnique = new TLongObjectHashMap<>();
 		// REMOVE TEST BLOCK ONCE NOT USED ///// 
 //		BinaryRoutePlanner.TRACE_ROUTING = s.getRoad().getId() / 64 == 451406223; //233801367l;
-		boolean testBUG = true;
-		TLongObjectHashMap<RouteSegment> testIteration = null;
-		for (int iteration = 0; iteration < (testBUG ? 2 : 1); iteration++) {
-			testIteration = resUnique; 
-			if (testBUG) {
-				ctx.config.planRoadDirection = iteration;
+//		boolean testBUG = true;
+//		TLongObjectHashMap<RouteSegment> testIteration = null;
+//		for (int iteration = 0; iteration < (testBUG ? 2 : 1); iteration++) {
+//			testIteration = resUnique; 
+//			if (testBUG) {
 //				BinaryRoutePlanner.DEBUG_BREAK_EACH_SEGMENT = iteration != 0;
 //				BinaryRoutePlanner.DEBUG_PRECISE_DIST_MEASUREMENT = iteration != 0;
-			}
-			///// TEST BLOCK ////
+//			}
+//			///// TEST BLOCK ////
 			
 			resUnique = new TLongObjectHashMap<>();
 			ctx.unloadAllData(); // needed for proper multidijsktra work
@@ -423,37 +416,37 @@ public class HHRoutingShortcutCreator {
 				}
 			}
 			//// TEST BLOCK
-		}
-		long[] testKeys = testIteration == null ? new long[0] : testIteration.keys();
-		for (long pntId : testKeys) {
-			RouteSegment prev = testIteration.get(pntId);
-			RouteSegment o = resUnique.get(pntId);
-			if (Math.abs(1 - prev.distanceFromStart / o.distanceFromStart) * 100 > 0.1) {
-				double d1 = HHRoutingUtilities.testGetDist(prev, false);
-				double d2 = HHRoutingUtilities.testGetDist(o, true);
-				System.out.printf("1 = false (2 = true): %.1f%% (%.1f%%). %.2f s (%.2f m) != %.2f  s (%.2fm) - %s %s - %.5f, %.5f -> %.5f, %.5f \n",
-						Math.abs(1 - prev.distanceFromStart / o.distanceFromStart) * 100, Math.abs(1 - d1 / d2) * 100,
-						prev.distanceFromStart, HHRoutingUtilities.testGetDist(prev, false), o.distanceFromStart,
-						HHRoutingUtilities.testGetDist(o, true), s, o,
-						MapUtils.get31LatitudeY(s.getStartPointY()), MapUtils.get31LongitudeX(s.getStartPointX()), 
-						MapUtils.get31LatitudeY(o.getStartPointY()), MapUtils.get31LongitudeX(o.getStartPointX()));
-				List<LatLon> lprev = HHRoutingUtilities.testGeometry(prev);
-				List<LatLon> lcur = HHRoutingUtilities.testGeometry(o);
-				boolean diff = false;
-				if (lprev.size() != lcur.size()) {
-					diff = true;
-				}
-				for (int k = 0; !diff && k < lprev.size(); k++) {
-					if (MapUtils.getDistance(lprev.get(k), lcur.get(k)) > 5) {
-						diff = true;
-					}
-				}
-				if (diff) {
-					System.out.println(HHRoutingUtilities.testGetGeometry(lprev));
-					System.out.println(HHRoutingUtilities.testGetGeometry(lcur));
-				}
-			}
-		}
+//		}
+//		long[] testKeys = testIteration == null ? new long[0] : testIteration.keys();
+//		for (long pntId : testKeys) {
+//			RouteSegment prev = testIteration.get(pntId);
+//			RouteSegment o = resUnique.get(pntId);
+//			if (Math.abs(1 - prev.distanceFromStart / o.distanceFromStart) * 100 > 0.1) {
+//				double d1 = HHRoutingUtilities.testGetDist(prev, false);
+//				double d2 = HHRoutingUtilities.testGetDist(o, true);
+//				System.out.printf("1 = false (2 = true): %.1f%% (%.1f%%). %.2f s (%.2f m) != %.2f  s (%.2fm) - %s %s - %.5f, %.5f -> %.5f, %.5f \n",
+//						Math.abs(1 - prev.distanceFromStart / o.distanceFromStart) * 100, Math.abs(1 - d1 / d2) * 100,
+//						prev.distanceFromStart, HHRoutingUtilities.testGetDist(prev, false), o.distanceFromStart,
+//						HHRoutingUtilities.testGetDist(o, true), s, o,
+//						MapUtils.get31LatitudeY(s.getStartPointY()), MapUtils.get31LongitudeX(s.getStartPointX()), 
+//						MapUtils.get31LatitudeY(o.getStartPointY()), MapUtils.get31LongitudeX(o.getStartPointX()));
+//				List<LatLon> lprev = HHRoutingUtilities.testGeometry(prev);
+//				List<LatLon> lcur = HHRoutingUtilities.testGeometry(o);
+//				boolean diff = false;
+//				if (lprev.size() != lcur.size()) {
+//					diff = true;
+//				}
+//				for (int k = 0; !diff && k < lprev.size(); k++) {
+//					if (MapUtils.getDistance(lprev.get(k), lcur.get(k)) > 5) {
+//						diff = true;
+//					}
+//				}
+//				if (diff) {
+//					System.out.println(HHRoutingUtilities.testGetGeometry(lprev));
+//					System.out.println(HHRoutingUtilities.testGetGeometry(lcur));
+//				}
+//			}
+//		}
 		return new ArrayList<>(resUnique.valueCollection());
 	}
 	

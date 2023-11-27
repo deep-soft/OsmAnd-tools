@@ -1,6 +1,8 @@
 package net.osmand.router;
 
 
+import static net.osmand.router.HHRoutingUtilities.logf;
+
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
@@ -30,10 +32,6 @@ import net.osmand.data.LatLon;
 import net.osmand.data.QuadRect;
 import net.osmand.obf.preparation.BinaryMapIndexWriter;
 import net.osmand.obf.preparation.DBDialect;
-import static net.osmand.router.HHRoutingUtilities.logf;
-
-import net.osmand.router.HHRoutingDB.NetworkDBPoint;
-import net.osmand.router.HHRoutingDB.NetworkDBSegment;
 import net.osmand.router.HHRoutingSubGraphCreator.RouteSegmentBorderPoint;
 import net.osmand.util.Algorithms;
 import net.osmand.util.MapUtils;
@@ -54,7 +52,7 @@ public class HHRoutingPreparationDB extends HHRoutingDB {
 	private int maxClusterID;
 
 	public HHRoutingPreparationDB(File dbFile) throws SQLException {
-		super(DBDialect.SQLITE.getDatabaseConnection(dbFile.getAbsolutePath(), LOG));
+		super(dbFile, DBDialect.SQLITE.getDatabaseConnection(dbFile.getAbsolutePath(), LOG));
 		if (!compactDB) {
 			Statement st = conn.createStatement();
 			st.execute("CREATE TABLE IF NOT EXISTS routeLongRoads(id, regionId, roadId, startIndex, points, PRIMARY key (id))");
@@ -134,21 +132,26 @@ public class HHRoutingPreparationDB extends HHRoutingDB {
 	}
 		  
 
-	public static void compact(Connection src, Connection tgt) throws SQLException, IOException {
+	public static void compact(File source, File target) throws SQLException, IOException {
+		System.out.printf("Compacting %s -> %s...\n", source.getName(), target.getName());
+		target.delete();
+		Connection src = DBDialect.SQLITE.getDatabaseConnection(source.getAbsolutePath(), LOG);
+		Connection tgt = DBDialect.SQLITE.getDatabaseConnection(target.getAbsolutePath(), LOG);
 		Statement st = tgt.createStatement();
 		String columnNames = "pointGeoId, idPoint, clusterId, dualIdPoint, dualClusterId, chInd, roadId, start, end, sx31, sy31, ex31, ey31";
 		int columnSize = columnNames.split(",").length;
-		st.execute("CREATE TABLE IF NOT EXISTS profiles(id, params)");
+		st.execute("CREATE TABLE IF NOT EXISTS profiles(profile, id, params)");
 		st.execute("CREATE TABLE IF NOT EXISTS points(" + columnNames + ",  PRIMARY key (idPoint))"); 
 		st.execute("CREATE TABLE IF NOT EXISTS segments(id, profile, ins, outs, PRIMARY key (id, profile))");
-		PreparedStatement pIns = tgt.prepareStatement("INSERT INTO profiles(id, params) VALUES (?, ?)");
+		PreparedStatement pIns = tgt.prepareStatement("INSERT INTO profiles(profile, id, params) VALUES (?, ?, ?)");
 		TIntArrayList profiles = new TIntArrayList();
-		ResultSet profileSet = src.createStatement().executeQuery(" select id, params from profiles");
+		ResultSet profileSet = src.createStatement().executeQuery("select profile, id, params from profiles");
 		while (profileSet.next()) {
-			pIns.setInt(1, profileSet.getInt(1));
-			pIns.setString(2, profileSet.getString(2));
+			pIns.setString(1, profileSet.getString(1));
+			pIns.setInt(2, profileSet.getInt(2));
+			pIns.setString(3, profileSet.getString(3));
 			pIns.execute();
-			profiles.add(profileSet.getInt(1));
+			profiles.add(profileSet.getInt(2));
 		}
 		String insPnts = "";
 		for (int k = 0; k < columnSize; k++) {
@@ -158,10 +161,10 @@ public class HHRoutingPreparationDB extends HHRoutingDB {
 			insPnts += "?";
 		}
 		
-		HHRoutingDB sourceDB = new HHRoutingDB(src);
+		HHRoutingDB sourceDB = new HHRoutingDB(source, src);
 		TLongObjectHashMap<NetworkDBPointPrep> pointsById = sourceDB.loadNetworkPoints(NetworkDBPointPrep.class);
-		TIntObjectHashMap<List<NetworkDBPointPrep>> outPoints = sourceDB.groupByClusters(pointsById, true);
-		TIntObjectHashMap<List<NetworkDBPointPrep>> inPoints = sourceDB.groupByClusters(pointsById, false);
+		TIntObjectHashMap<List<NetworkDBPointPrep>> outPoints = HHRoutePlanner.groupByClusters(pointsById, true);
+		TIntObjectHashMap<List<NetworkDBPointPrep>> inPoints = HHRoutePlanner.groupByClusters(pointsById, false);
 		pIns = tgt.prepareStatement("INSERT INTO points(" + columnNames + ") VALUES (" + insPnts + ")");
 		ResultSet rs = src.createStatement().executeQuery(" select " + columnNames + " from points");
 		while (rs.next()) {
@@ -248,7 +251,7 @@ public class HHRoutingPreparationDB extends HHRoutingDB {
 		int ind = 0;
 		for (NetworkDBPointPrep p : pnts) {
 			updCHInd.setLong(1, p.chFinalInd);
-			updCHInd.setLong(2, p.pntGeoId);
+			updCHInd.setLong(2, p.index);
 			updCHInd.addBatch();
 			if (ind++ % BATCH_SIZE == 0) {
 				updCHInd.executeBatch();
@@ -415,7 +418,7 @@ public class HHRoutingPreparationDB extends HHRoutingDB {
 		st.close();
 	}
 	
-	public void insertSegments(List<NetworkDBSegment> segments) throws SQLException {
+	public void insertSegments(List<NetworkDBSegment> segments, int routingProfile) throws SQLException {
 		if (insSegment == null) {
 			insSegment = conn.prepareStatement("INSERT INTO segments(idPoint, idConnPoint, dist, shortcut, profile) VALUES(?, ?, ?, ?, ?)");
 		}
