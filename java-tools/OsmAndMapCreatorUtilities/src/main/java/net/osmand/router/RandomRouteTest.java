@@ -327,10 +327,11 @@ public class RandomRouteTest {
 
 	private void getObfHighwayRoadRandomPoints(
 			BinaryMapIndexReader index, List<LatLon> randomPoints, int limit, int seed) throws IOException {
-		Counter counter = new Counter();
+		Counter added = new Counter();
 
-		// skipDivisor used to hop over sequential points to enlarge distances between them
-		int skipDivisor = 1 + fixedRandom(100, randomActions.HIGHWAY_SKIP_DIV, 0, seed);
+		// pointSkipDivisor used to hop over sequential points to enlarge distances between them
+		// The idea is to read only 1 of 100 points, but the different 1 each method call (seed)
+		int pointSkipDivisor = 1 + fixedRandom(100, randomActions.HIGHWAY_SKIP_DIV, 0, seed);
 
 		for (BinaryIndexPart p : index.getIndexes()) {
 			if (p instanceof BinaryMapRouteReaderAdapter.RouteRegion) {
@@ -353,14 +354,14 @@ public class RandomRouteTest {
 							) {
 								final int SHIFT_ID = 6;
 								final long osmId = obj.getId() >> SHIFT_ID;
-								if (osmId % skipDivisor == 0) {
+								if (osmId % pointSkipDivisor == 0) {
 									int nPoints = obj.pointsX.length;
 									// use object id and seed (number of class randomPoints) as a unique random seed
 									int pointIndex = fixedRandom(nPoints, randomActions.HIGHWAY_TO_POINT, obj.id, seed);
 									double lat = MapUtils.get31LatitudeY(obj.pointsY[pointIndex]);
 									double lon = MapUtils.get31LongitudeX(obj.pointsX[pointIndex]);
 									randomPoints.add(new LatLon(lat, lon));
-									counter.value++;
+									added.value++;
 									break;
 								}
 							}
@@ -370,7 +371,7 @@ public class RandomRouteTest {
 
 					@Override
 					public boolean isCancelled() {
-						return counter.value > limit;
+						return added.value > limit;
 					}
 				});
 			}
@@ -384,8 +385,8 @@ public class RandomRouteTest {
 
 		int seed = randomPoints.size(); // second random seed (unique for every method call)
 
-		int pointsToRead = config.ITERATIONS * 10; // read 10 x ITERATIONS points every time
-		int pointsPerObf = pointsToRead / obfReaders.size(); // how many read per one obf
+		int pointsToRead = config.ITERATIONS * 10; // read up to 10 x ITERATIONS points every time
+		int pointsPerObf = pointsToRead / obfReaders.size(); // how many to read per one obf
 		pointsPerObf = pointsPerObf > 10 ? pointsPerObf : 10; // as minimum as 10
 
 		for (int o = 0; o < obfReaders.size(); o++) {
