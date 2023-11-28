@@ -12,7 +12,6 @@ import net.osmand.binary.BinaryIndexPart;
 import net.osmand.binary.BinaryMapIndexReader;
 import net.osmand.binary.BinaryMapRouteReaderAdapter;
 import net.osmand.binary.RouteDataObject;
-import net.osmand.obf.BinaryInspector;
 import net.osmand.util.MapUtils;
 import org.apache.commons.logging.Log;
 
@@ -37,12 +36,13 @@ public class RandomRouteTest {
 		private final int MAX_INTER_POINTS = 2; // 0-2 intermediate points
 		private final int MIN_DISTANCE_KM = 50; // min distance between start and finish
 		private final int MAX_DISTANCE_KM = 100; // max distance between start and finish
-		private final int MAX_DEVIATE_START_FINISH_M = 100; // 0-100 meters start/finish deviation from way-nodes
-		private final Map<String, String[]> RANDOM_PROFILES = new HashMap<>() {{ // profiles: {"profile:tag"} = [options]
-			put("car", new String[0]);
-			put("bicycle", new String[0]);
-			put("bicycle:elevation", new String[]{"height_obstacles"});
-		}};
+		private final int MAX_SHIFT_ALL_POINTS_M = 500; // shift LatLon of all points by 0-500 meters
+		private final String[] RANDOM_PROFILES = { // randomly selected profiles[,params] for each iteration
+				"car",
+				"bicycle",
+				"bicycle,height_obstacles",
+//				"bicycle,driving_style_prefer_unpaved,driving_style_balance:false,height_obstacles",
+		};
 	}
 
 	private class TestResult {
@@ -272,50 +272,118 @@ public class RandomRouteTest {
 	private enum randomActions {
 		HIGHWAY_SKIP_DIV,
 		HIGHWAY_TO_POINT,
+		N_INTER_POINTS,
 		GET_START,
-		GET_FINISH,
+		GET_POINTS,
+		GET_PROFILE,
+		SHIFT_METERS,
 	}
 
 	private void generateRandomTests() throws IOException {
 		List<LatLon> randomPoints = new ArrayList<>();
+		Set<LatLon> avoidDupes = new HashSet<>();
 
+		int replenishCounter = 0;
+		final int REPLENISH_LIMIT = 10; // avoid looping in case of bad config
 		replenishRandomPoints(randomPoints); // read initial random points list
 
 		for (int i = 0; i < config.ITERATIONS; i++) {
-			int j;
 			TestEntry entry = new TestEntry();
 
-			// TODO profile, params
-
-			// select start
-			int startIndex = fixedRandom(randomPoints.size(), randomActions.GET_START, i, 0);
-			entry.start = randomPoints.get(startIndex);
-
-			// TODO interpoints (MIN/MAX_DISTANCE /= nInterpoints)
-
-			// find suitable finish
-			boolean finishFound = false;
-			for (j = 0; j < randomPoints.size(); j++) {
-				int finishIndex = fixedRandom(randomPoints.size(), randomActions.GET_FINISH, i, j);
-				entry.finish = randomPoints.get(finishIndex);
-				double km = MapUtils.getDistance(entry.start, entry.finish) / 1000;
-				if (km >= config.MIN_DISTANCE_KM && km <= config.MAX_DISTANCE_KM) {
-					finishFound = true;
-					break;
+			// 1) select profile,params
+			if (config.RANDOM_PROFILES.length > 0) {
+				boolean isProfileName = true; // "profile[,params]"
+				int profileIndex = fixedRandom(config.RANDOM_PROFILES.length, randomActions.GET_PROFILE, i, 0);
+				for (String param : config.RANDOM_PROFILES[profileIndex].split(",")) {
+					if (isProfileName) {
+						entry.profile = param;
+						isProfileName = false;
+					} else {
+						entry.params.add(param);
+					}
 				}
 			}
 
-			if (finishFound == false) {
+			// 2) select start
+			for (int j = 0; j < randomPoints.size(); j++) {
+				int startIndex = fixedRandom(randomPoints.size(), randomActions.GET_START, i, j);
+				entry.start = randomPoints.get(startIndex);
+				if (false == avoidDupes.contains(entry.start)) {
+					break;
+				}
+			}
+			avoidDupes.add(entry.start);
+
+			// 3) select via (inter points) and finish points, restart if no suitable points found
+			int nInterpoints = fixedRandom(config.MAX_INTER_POINTS + 1, randomActions.N_INTER_POINTS, i, 0);
+			int nNextPoints = 1 + nInterpoints; // as minimum, the one (finish) point must be added
+			int minDistanceKm = config.MIN_DISTANCE_KM / nNextPoints;
+			int maxDistanceKm = config.MAX_DISTANCE_KM / nNextPoints;
+			LatLon prevPoint = entry.start;
+
+			boolean restart = false;
+			while (nNextPoints-- > 0) {
+				LatLon point = null;
+				boolean pointFound = false;
+				for (int j = 0; j < randomPoints.size(); j++) {
+					int pointIndex = fixedRandom(randomPoints.size(), randomActions.GET_POINTS, i, nNextPoints + j);
+					point = randomPoints.get(pointIndex);
+					double km = MapUtils.getDistance(prevPoint, point) / 1000;
+					if (km >= minDistanceKm && km <= maxDistanceKm && false == avoidDupes.contains((point))) {
+						pointFound = true;
+						break;
+					}
+				}
+				if (pointFound == false) {
+					restart = true;
+					break;
+				} else if (point != null) {
+					prevPoint = point;
+					avoidDupes.add(point);
+					if (nNextPoints > 0) {
+						entry.via.add(point);
+					} else {
+						entry.finish = point;
+					}
+				} else {
+					throw new IllegalStateException("unable to find points after start");
+				}
+			}
+
+			if (restart) {
+				if (replenishCounter++ >= REPLENISH_LIMIT) {
+					throw new IllegalStateException("point replenish limit reached");
+				}
 				replenishRandomPoints(randomPoints); // read more points
 				System.err.printf("Read more points i=%d size=%d\n", i, randomPoints.size());
 				i--; // retry
 				continue;
 			}
 
-			// TODO deviate all points
+			// 4) shift points from their exact LatLon
+			if (config.MAX_SHIFT_ALL_POINTS_M > 0) {
+				class Shifter {
+					LatLon shiftLatLon(LatLon ll, int i, int j) {
+						int meters = fixedRandom(config.MAX_SHIFT_ALL_POINTS_M, randomActions.SHIFT_METERS, i, j);
+						double shift = meters / 111_000F; // enough approx meters to lat/lon
+						double lat = ll.getLatitude() + shift;
+						double lon = ll.getLongitude() + shift;
+						return new LatLon(lat, lon);
+					}
+				}
+				int n = 0;
+				Shifter shifter = new Shifter();
+				entry.start = shifter.shiftLatLon(entry.start, i, n++);
+				entry.finish = shifter.shiftLatLon(entry.finish, i, n++);
+				for (int j=0; j < entry.via.size(); j++) {
+					entry.via.set(j, shifter.shiftLatLon(entry.via.get(j), i, n++));
+				}
+			}
 
+			// 5) finally, add TestEntry to the testList
 			if (entry.start != null && entry.finish != null) {
 				System.err.printf("+ %s\n", entry);
+				replenishCounter = 0;
 				testList.add(entry);
 			}
 		}
@@ -357,7 +425,7 @@ public class RandomRouteTest {
 								if (osmId % pointSkipDivisor == 0) {
 									int nPoints = obj.pointsX.length;
 									// use object id and seed (number of class randomPoints) as a unique random seed
-									int pointIndex = fixedRandom(nPoints, randomActions.HIGHWAY_TO_POINT, obj.id, seed);
+									int pointIndex = fixedRandom(nPoints, randomActions.HIGHWAY_TO_POINT, osmId, seed);
 									double lat = MapUtils.get31LatitudeY(obj.pointsY[pointIndex]);
 									double lon = MapUtils.get31LongitudeX(obj.pointsX[pointIndex]);
 									randomPoints.add(new LatLon(lat, lon));
