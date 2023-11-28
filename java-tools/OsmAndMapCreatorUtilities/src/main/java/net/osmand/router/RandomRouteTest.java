@@ -266,7 +266,7 @@ public class RandomRouteTest {
 	private int fixedRandom(int bound, randomActions action, long i, long j) {
 		final long week = Calendar.getInstance().get(Calendar.WEEK_OF_YEAR); // 01-52
 		final long seed = (week << 56) + (action.ordinal() << 48) + (i << 1) + j;
-		return bound > 0 ? new Random(seed).nextInt(bound) : 0;
+		return bound > 0 ? Math.abs(new Random(seed).nextInt()) % bound : 0;
 	}
 
 	private enum randomActions {
