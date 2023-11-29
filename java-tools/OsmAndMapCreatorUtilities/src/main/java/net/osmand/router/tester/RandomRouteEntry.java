@@ -5,7 +5,7 @@ import net.osmand.data.LatLon;
 import java.util.ArrayList;
 import java.util.List;
 
-class RandomRouteTesterEntry {
+class RandomRouteEntry {
 	LatLon start;
 	LatLon finish;
 	List<LatLon> via = new ArrayList<>(); // interpoints
@@ -13,15 +13,15 @@ class RandomRouteTesterEntry {
 	String profile = "car";
 	List<String> params = new ArrayList<>();
 
-	private List<TestResult> results = new ArrayList<>();
+	List<TestResult> results = new ArrayList<>();
 
-	private class TestResult {
-		private String type;
-		private double cost;
-		private int runTime; // ms
-		private int visitedSegments;
+	class TestResult {
+		String type;
+		double cost;
+		int runTime; // ms
+		int visitedSegments;
 		// TODO distance, geometry, etc
-		private RandomRouteTesterEntry parent; // ref to start, finish, etc
+		RandomRouteEntry parent; // ref to start, finish, etc
 
 		public String toString() {
 			return parent.toURL(type);
@@ -32,7 +32,7 @@ class RandomRouteTesterEntry {
 		return toURL("osrm");
 	}
 
-	private String toURL(String type) {
+	String toURL(String type) {
 		String START = String.format("%f,%f", start.getLatitude(), start.getLongitude());
 		String FINISH = String.format("%f,%f", finish.getLatitude(), finish.getLongitude());
 		String TYPE = type == null ? "osmand" : type;

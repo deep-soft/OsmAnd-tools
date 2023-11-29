@@ -14,25 +14,56 @@ import net.osmand.obf.preparation.DBDialect;
 import net.osmand.router.HHRoutingDB;
 import net.osmand.PlatformUtil;
 
-class RandomRouteTesterMain {
-	public static void main(String[] args) throws Exception {
-		RandomRouteTesterMain test = new RandomRouteTesterMain();
-		RandomRouteTesterConfig config = new RandomRouteTesterConfig();
+class RandomRouteTester {
+	class TesterConfig {
+		final String[] PREDEFINED_TESTS = { // optional predefined routes in "url" format (imply ITERATIONS=0)
+//				"https://test.osmand.net/map/?start=48.211348,24.478998&finish=48.172382,24.421492&type=osmand&profile=bicycle&params=bicycle,height_obstacles#14/48.1852/24.4208",
+//				"https://osmand.net/map/?start=50.450128,30.535611&finish=50.460479,30.589365&via=50.452647,30.588330&type=osmand&profile=car#14/50.4505/30.5511",
+//				"start=48.211348,24.478998&finish=48.172382,24.421492&type=osmand&profile=bicycle&params=bicycle,height_obstacles",
+//				"start=50.450128,30.535611&finish=50.460479,30.589365&via=50.452647,30.588330&profile=car",
+//				"start=50.450128,30.535611&finish=50.460479,30.589365&via=1,2;3,4;5,6&profile=car",
+//				"start=L,L&finish=L,L&via=L,L;L,L&profile=pedestrian&params=height_obstacles" // example
+		};
 
-		File obfDirectory = new File(args.length == 0 ? "." : args[0]); // args[0] is a path to *.obf and hh-files
-
-		test.initHHsqliteConnections(obfDirectory, HHRoutingDB.EXT);
-		test.initObfReaders(obfDirectory);
-
-		test.testList = config.generateTestList(test.obfReaders);
+		// random tests settings
+		final int ITERATIONS = 10; // number of random routes
+		final int MAX_INTER_POINTS = 2; // 0-2 intermediate points
+		final int MIN_DISTANCE_KM = 50; // min distance between start and finish
+		final int MAX_DISTANCE_KM = 100; // max distance between start and finish
+		final int MAX_SHIFT_ALL_POINTS_M = 500; // shift LatLon of all points by 0-500 meters
+		final String[] RANDOM_PROFILES = { // randomly selected profiles[,params] for each iteration
+				"car",
+				"bicycle",
+				"bicycle,height_obstacles",
+//				"bicycle,driving_style_prefer_unpaved,driving_style_balance:false,height_obstacles",
+		};
 	}
 
-	private List<RandomRouteTesterEntry> testList = new ArrayList<>();
+	public static void main(String[] args) throws Exception {
+		// TODO parse args --obf-storage --obf-prefix --iterations --min-dist --max-dist --output-html etc
+		File obfDirectory = new File(args.length == 0 ? "." : args[0]); // args[0] is a path to *.obf and hh-files
+
+		RandomRouteTester test = new RandomRouteTester(obfDirectory);
+
+		test.initHHsqliteConnections();
+		test.initObfReaders();
+		test.generateRoutes();
+	}
+
+	private File obfDirectory;
+	private RandomRouteGenerator generator;
+	private TesterConfig config = new TesterConfig();
+	private List<RandomRouteEntry> testList = new ArrayList<>();
 	private List<BinaryMapIndexReader> obfReaders = new ArrayList<>();
 	private HashMap<String, Connection> hhConnections = new HashMap<>(); // [Profile]
-	private final Log LOG = PlatformUtil.getLog(RandomRouteTesterMain.class);
+	private final Log LOG = PlatformUtil.getLog(RandomRouteTester.class);
 
-	private void initObfReaders(File obfDirectory) throws IOException {
+	private RandomRouteTester(File obfDirectory) {
+		this.generator = new RandomRouteGenerator(config);
+		this.obfDirectory = obfDirectory;
+	}
+
+	private void initObfReaders() throws IOException {
 		List<File> obfFiles = new ArrayList<>();
 
 		if (obfDirectory.isDirectory()) {
@@ -54,12 +85,12 @@ class RandomRouteTesterMain {
 		}
 	}
 
-	private void initHHsqliteConnections(File obfDirectory, String ext) throws SQLException {
+	private void initHHsqliteConnections() throws SQLException {
 		List<File> sqliteFiles = new ArrayList<>();
 
 		if (obfDirectory.isDirectory()) {
 			for (File f : obfDirectory.listFiles()) {
-				if (f.isFile() && f.getName().endsWith(ext)) {
+				if (f.isFile() && f.getName().endsWith(HHRoutingDB.EXT)) {
 					sqliteFiles.add(f);
 				}
 			}
@@ -76,6 +107,10 @@ class RandomRouteTesterMain {
 				hhConnections.put(profile, DBDialect.SQLITE.getDatabaseConnection(source.getAbsolutePath(), LOG));
 			}
 		}
+	}
+
+	private void generateRoutes() {
+		testList = generator.generateTestList(obfReaders);
 	}
 }
 
@@ -127,3 +162,20 @@ class RandomRouteTesterMain {
 //			return config;
 //		}
 //	}
+
+/*
+	1) BinaryRoutePlanner (ideal)
+	2) Native-binary
+	3) HH-java
+ */
+
+/*
+ TODO Ivan:
+
+    main()
+   --prefix (--include) Prefix*.obf
+   --iterations
+   --mindist
+   --maxdist
+   --output html-table ? (url - to public_html)
+ */

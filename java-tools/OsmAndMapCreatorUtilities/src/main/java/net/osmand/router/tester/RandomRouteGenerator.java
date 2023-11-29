@@ -11,36 +11,16 @@ import net.osmand.util.MapUtils;
 import java.io.IOException;
 import java.util.*;
 
-class RandomRouteTesterConfig {
-	private class TestConfig {
-		private final String[] PREDEFINED_TESTS = { // optional predefined routes in "url" format (imply ITERATIONS=0)
-//				"https://test.osmand.net/map/?start=48.211348,24.478998&finish=48.172382,24.421492&type=osmand&profile=bicycle&params=bicycle,height_obstacles#14/48.1852/24.4208",
-//				"https://osmand.net/map/?start=50.450128,30.535611&finish=50.460479,30.589365&via=50.452647,30.588330&type=osmand&profile=car#14/50.4505/30.5511",
-//				"start=48.211348,24.478998&finish=48.172382,24.421492&type=osmand&profile=bicycle&params=bicycle,height_obstacles",
-//				"start=50.450128,30.535611&finish=50.460479,30.589365&via=50.452647,30.588330&profile=car",
-//				"start=50.450128,30.535611&finish=50.460479,30.589365&via=1,2;3,4;5,6&profile=car",
-//				"start=L,L&finish=L,L&via=L,L;L,L&profile=pedestrian&params=height_obstacles" // example
-		};
+class RandomRouteGenerator {
+	private RandomRouteTester.TesterConfig config;
+	private List<RandomRouteEntry> testList = new ArrayList<>();
+	private List<BinaryMapIndexReader> obfReaders = new ArrayList<>();
 
-		// random tests settings
-		private final int ITERATIONS = 10; // number of random routes
-		private final int MAX_INTER_POINTS = 2; // 0-2 intermediate points
-		private final int MIN_DISTANCE_KM = 50; // min distance between start and finish
-		private final int MAX_DISTANCE_KM = 100; // max distance between start and finish
-		private final int MAX_SHIFT_ALL_POINTS_M = 500; // shift LatLon of all points by 0-500 meters
-		private final String[] RANDOM_PROFILES = { // randomly selected profiles[,params] for each iteration
-				"car",
-				"bicycle",
-				"bicycle,height_obstacles",
-//				"bicycle,driving_style_prefer_unpaved,driving_style_balance:false,height_obstacles",
-		};
+	public RandomRouteGenerator(RandomRouteTester.TesterConfig config) {
+		this.config = config;
 	}
 
-	private TestConfig config = new TestConfig();
-	private List<BinaryMapIndexReader> obfReaders = new ArrayList<>();
-	private List<RandomRouteTesterEntry> testList = new ArrayList<>();
-
-	List<RandomRouteTesterEntry> generateTestList(List<BinaryMapIndexReader> obfReaders) {
+	List<RandomRouteEntry> generateTestList(List<BinaryMapIndexReader> obfReaders) {
 		this.obfReaders = obfReaders;
 		if (config.PREDEFINED_TESTS.length > 0) {
 			parsePredefinedTests();
@@ -56,7 +36,7 @@ class RandomRouteTesterConfig {
 
 	private void parsePredefinedTests() {
 		for (String url : config.PREDEFINED_TESTS) {
-			RandomRouteTesterEntry entry = new RandomRouteTesterEntry();
+			RandomRouteEntry entry = new RandomRouteEntry();
 			String opts = url.replaceAll(".*\\?", "").replaceAll("#.*", "");
 			if (opts.contains("&")) {
 				for (String keyval : opts.split("&")) {
@@ -199,7 +179,7 @@ class RandomRouteTesterConfig {
 		replenishRandomPoints(randomPoints); // read initial random points list
 
 		for (int i = 0; i < config.ITERATIONS; i++) {
-			RandomRouteTesterEntry entry = new RandomRouteTesterEntry();
+			RandomRouteEntry entry = new RandomRouteEntry();
 
 			// 1) select profile,params
 			if (config.RANDOM_PROFILES.length > 0) {
