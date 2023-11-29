@@ -1,4 +1,4 @@
-package net.osmand.router;
+package net.osmand.router.tester;
 
 import java.io.File;
 import java.io.IOException;
@@ -12,6 +12,7 @@ import net.osmand.binary.BinaryIndexPart;
 import net.osmand.binary.BinaryMapIndexReader;
 import net.osmand.binary.BinaryMapRouteReaderAdapter;
 import net.osmand.binary.RouteDataObject;
+import net.osmand.router.HHRoutingDB;
 import net.osmand.util.MapUtils;
 import org.apache.commons.logging.Log;
 
@@ -19,7 +20,7 @@ import net.osmand.PlatformUtil;
 import net.osmand.data.LatLon;
 import net.osmand.obf.preparation.DBDialect;
 
-public class RandomRouteTest {
+public class RandomRouteTester {
 	private class TestConfig {
 		// optional predefined routes, each in the url-format (imply ITERATIONS=0)
 		private final String[] PREDEFINED_TESTS = {
@@ -103,10 +104,10 @@ public class RandomRouteTest {
 	private List<TestEntry> testList = new ArrayList<>();
 	private List<BinaryMapIndexReader> obfReaders = new ArrayList<>();
 	private HashMap<String, Connection> hhConnections = new HashMap<>(); // [Profile]
-	private final Log LOG = PlatformUtil.getLog(RandomRouteTest.class);
+	private final Log LOG = PlatformUtil.getLog(RandomRouteTester.class);
 
 	public static void main(String[] args) throws Exception {
-		RandomRouteTest test = new RandomRouteTest();
+		RandomRouteTester test = new RandomRouteTester();
 
 		File obfDirectory = new File(args.length == 0 ? "." : args[0]); // args[0] is a path to *.obf and hh-files
 
@@ -462,7 +463,7 @@ public class RandomRouteTest {
 		}
 	}
 
-	RandomRouteTest() {
+	RandomRouteTester() {
 		this.config = new TestConfig();
 	}
 }
