@@ -1,9 +1,13 @@
 package net.osmand.router.tester;
 
 import net.osmand.data.LatLon;
+import net.osmand.router.RouteSegmentResult;
+import net.osmand.router.RoutingContext;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 class RandomRouteEntry {
 	LatLon start;
@@ -13,19 +17,19 @@ class RandomRouteEntry {
 	String profile = "car";
 	List<String> params = new ArrayList<>();
 
-	List<TestResult> results = new ArrayList<>();
+	List<RandomRouteResult> results = new ArrayList<>();
 
-	class TestResult {
-		String type;
-		double cost;
-		int runTime; // ms
-		int visitedSegments;
-		// TODO distance, geometry, etc
-		RandomRouteEntry parent; // ref to start, finish, etc
-
-		public String toString() {
-			return parent.toURL(type);
-		}
+	Map<String, String> mapParams() {
+		Map<String, String> map = new HashMap<>();
+		params.forEach(p -> {
+			String[] kv = p.split("[:=]"); // height_obstacles (true) or height:5 or height=5
+			if (kv.length > 1) {
+				map.put(kv[0], kv[1]); // key && value
+			} else {
+				map.put(kv[0], "true"); // key only (= "true")
+			}
+		});
+		return map;
 	}
 
 	public String toString() {
@@ -56,5 +60,37 @@ class RandomRouteEntry {
 				"https://test.osmand.net/map/?start=%s&finish=%s%s%s&type=%s&profile=%s%s%s#%s",
 				START, FINISH, hasVia, VIA, TYPE, PROFILE, hasParams, PARAMS, GO
 		);
+	}
+}
+
+class RandomRouteResult {
+	String type;
+	double cost;
+	long runTime; // ms
+	int visitedSegments;
+	double distance; // meters
+	RandomRouteEntry entry; // ref to the parent: start, finish, etc
+
+	public RandomRouteResult(String type, RandomRouteEntry entry, long runTime,
+	                         RoutingContext ctx, List<RouteSegmentResult> segments) {
+		this.type = type;
+		this.entry = entry;
+		this.runTime = runTime;
+
+		this.distance = 0;
+		this.cost = ctx.routingTime;
+		this.visitedSegments = ctx.calculationProgress.visitedSegments;
+
+		if (segments != null) {
+			for (RouteSegmentResult r : segments) {
+				this.distance += r.getDistance();
+			}
+		}
+
+		System.err.printf("%s (%d) cost=%f dist=%f\n", type, runTime, cost, distance);
+	}
+
+	public String toString() {
+		return entry.toURL(type);
 	}
 }

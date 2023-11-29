@@ -12,11 +12,11 @@ import java.io.IOException;
 import java.util.*;
 
 class RandomRouteGenerator {
-	private RandomRouteTester.TesterConfig config;
+	private RandomRouteTester.GeneratorConfig config;
 	private List<RandomRouteEntry> testList = new ArrayList<>();
 	private List<BinaryMapIndexReader> obfReaders = new ArrayList<>();
 
-	public RandomRouteGenerator(RandomRouteTester.TesterConfig config) {
+	public RandomRouteGenerator(RandomRouteTester.GeneratorConfig config) {
 		this.config = config;
 	}
 
