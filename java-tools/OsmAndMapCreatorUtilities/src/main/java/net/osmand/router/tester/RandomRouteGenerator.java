@@ -73,7 +73,7 @@ class RandomRouteGenerator {
 				}
 			}
 			if (entry.start != null && entry.finish != null) {
-				System.err.printf("+ %s\n", entry);
+//				System.err.printf("+ %s\n", entry);
 				testList.add(entry);
 			}
 		}
@@ -156,7 +156,7 @@ class RandomRouteGenerator {
 
 	private void replenishRandomPoints(List<LatLon> randomPoints) throws IOException {
 		if (obfReaders.size() == 0) {
-			throw new IllegalStateException("empty obfReaders");
+			throw new IllegalStateException("empty obfReaders in replenishRandomPoints");
 		}
 
 		int seed = randomPoints.size(); // second random seed (unique for every method call)
@@ -246,7 +246,7 @@ class RandomRouteGenerator {
 					throw new IllegalStateException("point replenish limit reached");
 				}
 				replenishRandomPoints(randomPoints); // read more points
-				System.err.printf("Read more points i=%d size=%d\n", i, randomPoints.size());
+//				System.err.printf("Read more points i=%d size=%d\n", i, randomPoints.size());
 				i--; // retry
 				continue;
 			}
@@ -273,7 +273,7 @@ class RandomRouteGenerator {
 
 			// 5) finally, add TestEntry to the testList
 			if (entry.start != null && entry.finish != null) {
-				System.err.printf("+ %s\n", entry);
+//				System.err.printf("+ %s\n", entry);
 				replenishCounter = 0;
 				testList.add(entry);
 			}

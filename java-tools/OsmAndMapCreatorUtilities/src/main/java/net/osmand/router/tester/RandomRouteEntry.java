@@ -8,7 +8,7 @@ import java.util.List;
 class RandomRouteEntry {
 	LatLon start;
 	LatLon finish;
-	List<LatLon> via = new ArrayList<>(); // interpoints
+	List<LatLon> via = new ArrayList<>(); // inter points
 
 	String profile = "car";
 	List<String> params = new ArrayList<>();

@@ -48,6 +48,8 @@ class RandomRouteTester {
 		test.initHHsqliteConnections();
 		test.initObfReaders();
 		test.generateRoutes();
+		test.collectRoutes();
+//		test.reportResult();
 	}
 
 	private File obfDirectory;
@@ -83,6 +85,10 @@ class RandomRouteTester {
 			System.out.printf("Use OBF %s...\n", source.getName());
 			obfReaders.add(new BinaryMapIndexReader(new RandomAccessFile(source, "r"), source));
 		}
+
+		if (obfReaders.size() == 0) {
+			throw new IllegalStateException("empty obfReaders");
+		}
 	}
 
 	private void initHHsqliteConnections() throws SQLException {
@@ -107,10 +113,34 @@ class RandomRouteTester {
 				hhConnections.put(profile, DBDialect.SQLITE.getDatabaseConnection(source.getAbsolutePath(), LOG));
 			}
 		}
+
+		if (hhConnections.size() == 0) {
+			throw new IllegalStateException("empty hhConnections");
+		}
 	}
 
 	private void generateRoutes() {
 		testList = generator.generateTestList(obfReaders);
+	}
+
+	private void collectRoutes() {
+		testList.forEach(entry -> {
+			runBinaryRoutePlannerJava(entry);
+			runBinaryRoutePlannerCpp(entry);
+			runHHRoutePlannerJava(entry);
+		});
+	}
+
+	private void runBinaryRoutePlannerJava(RandomRouteEntry entry) {
+
+	}
+
+	private void runBinaryRoutePlannerCpp(RandomRouteEntry entry) {
+
+	}
+
+	private void runHHRoutePlannerJava(RandomRouteEntry entry) {
+
 	}
 }
 
@@ -167,15 +197,4 @@ class RandomRouteTester {
 	1) BinaryRoutePlanner (ideal)
 	2) Native-binary
 	3) HH-java
- */
-
-/*
- TODO Ivan:
-
-    main()
-   --prefix (--include) Prefix*.obf
-   --iterations
-   --mindist
-   --maxdist
-   --output html-table ? (url - to public_html)
  */
