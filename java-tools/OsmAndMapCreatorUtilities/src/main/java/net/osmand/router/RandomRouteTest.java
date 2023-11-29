@@ -110,7 +110,7 @@ public class RandomRouteTest {
 
 		File obfDirectory = new File(args.length == 0 ? "." : args[0]); // args[0] is a path to *.obf and hh-files
 
-//		test.initHHsqliteConnections(obfDirectory, HHRoutingDB.EXT);
+		test.initHHsqliteConnections(obfDirectory, HHRoutingDB.EXT);
 		test.initObfReaders(obfDirectory);
 		test.generateTestList();
 	}
@@ -261,14 +261,6 @@ public class RandomRouteTest {
 		}
 	}
 
-	// return fixed (pseudo) random int >=0 and < bound
-	// use current week number + action (enum) + i + j as the random seed
-	private int fixedRandom(int bound, randomActions action, long i, long j) {
-		final long week = Calendar.getInstance().get(Calendar.WEEK_OF_YEAR); // 01-52
-		final long seed = (week << 56) + (action.ordinal() << 48) + (i << 1) + j;
-		return bound > 0 ? Math.abs(new Random(seed).nextInt()) % bound : 0;
-	}
-
 	private enum randomActions {
 		HIGHWAY_SKIP_DIV,
 		HIGHWAY_TO_POINT,
@@ -277,6 +269,14 @@ public class RandomRouteTest {
 		GET_POINTS,
 		GET_PROFILE,
 		SHIFT_METERS,
+	}
+
+	// return fixed (pseudo) random int >=0 and < bound
+	// use current week number + action (enum) + i + j as the random seed
+	private int fixedRandom(int bound, randomActions action, long i, long j) {
+		final long week = Calendar.getInstance().get(Calendar.WEEK_OF_YEAR); // 01-52
+		final long seed = (week << 56) + (action.ordinal() << 48) + (i << 1) + j;
+		return bound > 0 ? Math.abs(new Random(seed).nextInt()) % bound : 0;
 	}
 
 	private void generateRandomTests() throws IOException {
@@ -375,7 +375,7 @@ public class RandomRouteTest {
 				Shifter shifter = new Shifter();
 				entry.start = shifter.shiftLatLon(entry.start, i, n++);
 				entry.finish = shifter.shiftLatLon(entry.finish, i, n++);
-				for (int j=0; j < entry.via.size(); j++) {
+				for (int j = 0; j < entry.via.size(); j++) {
 					entry.via.set(j, shifter.shiftLatLon(entry.via.get(j), i, n++));
 				}
 			}
@@ -389,12 +389,12 @@ public class RandomRouteTest {
 		}
 	}
 
-	private class Counter {
-		private int value;
-	}
-
 	private void getObfHighwayRoadRandomPoints(
 			BinaryMapIndexReader index, List<LatLon> randomPoints, int limit, int seed) throws IOException {
+		class Counter {
+			private int value;
+		}
+
 		Counter added = new Counter();
 
 		// pointSkipDivisor used to hop over sequential points to enlarge distances between them
